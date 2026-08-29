@@ -2187,48 +2187,60 @@ export const AdminDashboard = () => {
                                     <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{firstItem.target_date}</div>
                                   </td>
 
-                                  <td>
-                                    <div>
-                                      <span style={{ fontWeight: '800', color: 'var(--text-main)' }}>{allBatchBids.length} Total Bids</span>
-                                    </div>
-                                  </td>
+                                   <td>
+                                     <div style={{ fontSize: '0.84rem', fontWeight: '800', color: '#0284c7' }}>
+                                       📦 Batch Container
+                                     </div>
+                                     <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '600' }}>
+                                       ({group.items.length} Sub-Indents)
+                                     </div>
+                                   </td>
 
-                                  <td>
-                                    {(() => {
-                                      const isAwarded = group.items.every((i) => i.status === 'Awarded');
-                                      const awardedAlloc = (db.allocations || []).find((a) => group.items.some((item) => String(item.id) === String(a.rate_request_id) || String(item.request_no) === String(a.rate_request_id)));
-                                      const awardedTrans = awardedAlloc ? (db.transporters || []).find((t) => t.id === awardedAlloc.transporter_id) : null;
+                                   <td>
+                                     {(() => {
+                                       const isAwarded = group.items.every((i) => i.status === 'Awarded');
+                                       const awardedAlloc = (db.allocations || []).find((a) => group.items.some((item) => String(item.id) === String(a.rate_request_id) || String(item.request_no) === String(a.rate_request_id)));
+                                       const awardedTrans = awardedAlloc ? (db.transporters || []).find((t) => t.id === awardedAlloc.transporter_id) : null;
 
-                                      return (
-                                        <div>
-                                          {awardedAlloc ? (
-                                            <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '900' }}>
-                                              🏆 Approved: {awardedTrans?.company_name || 'Transporter'}
-                                            </div>
-                                          ) : allBatchBids.length > 0 ? (
-                                            <div style={{ fontSize: '0.78rem', color: '#38bdf8', fontWeight: '800' }}>
-                                              📥 {allBatchBids.length} Transporter Quote(s)
-                                            </div>
-                                          ) : (
-                                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                              ⏳ Awaiting Quotes
-                                            </div>
-                                          )}
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setSelectedAuditReportModal(firstItem);
-                                            }}
-                                            className="btn btn-secondary"
-                                            style={{ padding: '3px 8px', fontSize: '0.72rem', marginTop: '4px', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '6px' }}
-                                          >
-                                            📋 Audit Log
-                                          </button>
-                                        </div>
-                                      );
-                                    })()}
-                                  </td>
+                                       return (
+                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                                           {awardedAlloc ? (
+                                             <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '900' }}>
+                                               🏆 Approved: {awardedTrans?.company_name || 'Transporter'}
+                                             </div>
+                                           ) : (
+                                             <div style={{ fontSize: '0.78rem', color: '#0284c7', fontWeight: '800' }}>
+                                               📦 Batch Container
+                                             </div>
+                                           )}
+                                           <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                             <button
+                                               type="button"
+                                               onClick={(e) => {
+                                                 e.stopPropagation();
+                                                 setSelectedRequestForParticularReport(firstItem);
+                                               }}
+                                               className="btn btn-secondary"
+                                               style={{ padding: '3px 8px', fontSize: '0.72rem', border: '1px solid #0284c7', color: '#0284c7', borderRadius: '6px', fontWeight: '800' }}
+                                             >
+                                               📄 Particular Report
+                                             </button>
+                                             <button
+                                               type="button"
+                                               onClick={(e) => {
+                                                 e.stopPropagation();
+                                                 setSelectedAuditReportModal(firstItem);
+                                               }}
+                                               className="btn btn-secondary"
+                                               style={{ padding: '3px 8px', fontSize: '0.72rem', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '6px' }}
+                                             >
+                                               📋 Audit Log
+                                             </button>
+                                           </div>
+                                         </div>
+                                       );
+                                     })()}
+                                   </td>
 
                                   <td>
                                     <span className="badge badge-open" style={{ padding: '4px 10px' }}>
