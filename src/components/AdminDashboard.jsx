@@ -1118,6 +1118,7 @@ export const AdminDashboard = () => {
 
   // EDIT TRANSPORT REQUIREMENT STATE & HANDLER
   const [editingReq, setEditingReq] = useState(null);
+  const [activeOverflowMenuKey, setActiveOverflowMenuKey] = useState(null);
 
   const handleOpenEditModal = (req) => {
     setEditingReq({ ...req });
@@ -2057,659 +2058,357 @@ export const AdminDashboard = () => {
                 </div>
               </div>
 
-              <div className="custom-table-container">
-                <table className="custom-table">
-                  <thead>
-                    <tr>
-                      <th>Req No.</th>
-                      <th>Title & Route</th>
-                      <th>Cargo & Qty</th>
-                      <th>Target Date</th>
-                      <th>Submitted Bids</th>
-                      <th>📊 Bidding & Approval Report</th>
-                      <th>Status</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      const filteredRequests = (db.rate_requests || []).filter((req) => {
-                        if (reqFilterTab === 'open') return req.status !== 'Awarded' && req.status !== 'Closed';
-                        if (reqFilterTab === 'done') return req.status === 'Awarded' || req.status === 'Closed';
-                        return true;
-                      });
+              <div className="req-cards-list">
+                {(() => {
+                  const filteredRequests = (db.rate_requests || []).filter((req) => {
+                    if (reqFilterTab === 'open') return req.status !== 'Awarded' && req.status !== 'Closed';
+                    if (reqFilterTab === 'done') return req.status === 'Awarded' || req.status === 'Closed';
+                    return true;
+                  });
 
-                      // Group Rate Requests by Master Batch Code (e.g. SNPL/26-27/REQ-0001 or SNPL/26-27/REQ-01)
-                      const groups = {};
-                      filteredRequests.forEach((req) => {
-                        let masterKey = req.batch_no;
-                        const reqNo = req.request_no || req.title || '';
-                        
-                        if (!masterKey) {
-                          const parts = reqNo.split('/');
-                          if (parts.length >= 3) {
-                            masterKey = parts.slice(0, 3).join('/'); // e.g. SNPL/26-27/REQ-0001
-                          } else {
-                            masterKey = reqNo;
-                          }
-                        }
+                  if (filteredRequests.length === 0) {
+                    return (
+                      <div style={{ textAlign: 'center', padding: '48px 20px', background: '#ffffff', borderRadius: '16px', border: '1.5px solid #e2e8f0', color: '#64748b', fontWeight: '700' }}>
+                        📦 No transport requirements found. Click 'Create Requirement' above to post new indents.
+                      </div>
+                    );
+                  }
 
-                        if (!groups[masterKey]) {
-                          groups[masterKey] = {
-                            batchKey: masterKey,
-                            items: []
-                          };
-                        }
-                        groups[masterKey].items.push(req);
-                      });
+                  // Group Rate Requests by Master Batch Code
+                  const groups = {};
+                  filteredRequests.forEach((req) => {
+                    let masterKey = req.batch_no;
+                    const reqNo = req.request_no || req.title || '';
+                    
+                    if (!masterKey) {
+                      const parts = reqNo.split('/');
+                      if (parts.length >= 3) {
+                        masterKey = parts.slice(0, 3).join('/');
+                      } else {
+                        masterKey = reqNo;
+                      }
+                    }
 
-                      const groupedList = Object.values(groups).sort((a, b) => {
-                        const itemA = a.items[0];
-                        const itemB = b.items[0];
+                    if (!groups[masterKey]) {
+                      groups[masterKey] = {
+                        batchKey: masterKey,
+                        items: []
+                      };
+                    }
+                    groups[masterKey].items.push(req);
+                  });
 
-                        const numA = parseInt((itemA?.batch_no || itemA?.request_no || itemA?.title || '').match(/REQ-(\d+)/i)?.[1] || 0, 10);
-                        const numB = parseInt((itemB?.batch_no || itemB?.request_no || itemB?.title || '').match(/REQ-(\d+)/i)?.[1] || 0, 10);
-                        if (numA !== numB) return numB - numA;
+                  const groupedList = Object.values(groups).sort((a, b) => {
+                    const itemA = a.items[0];
+                    const itemB = b.items[0];
+                    const numA = parseInt((itemA?.batch_no || itemA?.request_no || itemA?.title || '').match(/REQ-(\d+)/i)?.[1] || 0, 10);
+                    const numB = parseInt((itemB?.batch_no || itemB?.request_no || itemB?.title || '').match(/REQ-(\d+)/i)?.[1] || 0, 10);
+                    if (numA !== numB) return numB - numA;
+                    const timeA = new Date(itemA?.created_at || itemA?.target_date || 0).getTime() || 0;
+                    const timeB = new Date(itemB?.created_at || itemB?.target_date || 0).getTime() || 0;
+                    return timeB - timeA;
+                  });
 
-                        const timeA = new Date(itemA?.created_at || itemA?.target_date || 0).getTime() || 0;
-                        const timeB = new Date(itemB?.created_at || itemB?.target_date || 0).getTime() || 0;
-                        return timeB - timeA;
-                      });
+                  groupedList.forEach((grp) => {
+                    grp.items.sort((x, y) => {
+                      const subX = parseInt((x.request_no || x.title || '').split('/').pop() || 0, 10);
+                      const subY = parseInt((y.request_no || y.title || '').split('/').pop() || 0, 10);
+                      return subX - subY;
+                    });
+                  });
 
-                      groupedList.forEach((grp) => {
-                        grp.items.sort((x, y) => {
-                          const subX = parseInt((x.request_no || x.title || '').split('/').pop() || 0, 10);
-                          const subY = parseInt((y.request_no || y.title || '').split('/').pop() || 0, 10);
-                          return subX - subY;
-                        });
-                      });
+                  return groupedList.map((group) => {
+                    const isMultiItemBatch = group.items.length > 1;
+                    const isExpanded = expandedBatches[group.batchKey] || false;
+                    const totalBatchQty = group.items.reduce((acc, curr) => acc + (parseFloat(curr.required_qty) || 0), 0);
+                    const allBatchBids = (db.rate_submissions || []).filter((s) => group.items.some((item) => String(item.id) === String(s.rate_request_id) || String(item.request_no) === String(s.rate_request_id)));
+                    const firstItem = group.items[0];
 
-                      return groupedList.map((group) => {
-                        const isMultiItemBatch = group.items.length > 1;
-                        const isExpanded = expandedBatches[group.batchKey] || false;
+                    if (isMultiItemBatch) {
+                      const isBatchAwarded = group.items.every((i) => i.status === 'Awarded');
+                      const batchAlloc = (db.allocations || []).find((a) => group.items.some((item) => String(item.id) === String(a.rate_request_id) || String(item.request_no) === String(a.rate_request_id)));
+                      const batchTrans = batchAlloc ? (db.transporters || []).find((t) => t.id === batchAlloc.transporter_id) : null;
 
-                        const totalBatchQty = group.items.reduce((acc, curr) => acc + (parseFloat(curr.required_qty) || 0), 0);
-                        const allBatchBids = (db.rate_submissions || []).filter((s) => group.items.some((item) => String(item.id) === String(s.rate_request_id) || String(item.request_no) === String(s.rate_request_id)));
-                        const firstItem = group.items[0];
-
-                        if (isMultiItemBatch) {
-                          return (
-                            <React.Fragment key={`batch_grp_${group.batchKey}`}>
-                              {/* MASTER BATCH FOLDER ROW (SHOWN ONLY WHEN BATCH IS CLOSED) */}
-                              {!isExpanded && (
-                                <tr
-                                  onClick={() => toggleBatchExpand(group.batchKey)}
-                                  style={{
-                                    background: 'linear-gradient(90deg, rgba(2, 132, 199, 0.15) 0%, rgba(56, 189, 248, 0.15) 100%)',
-                                    borderLeft: '5px solid #38bdf8',
-                                    borderBottom: '1px solid rgba(255,255,255,0.1)',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s ease-in-out'
-                                  }}
-                                  title="Click anywhere on this batch row to open sub-indents"
-                                >
-                                  <td>
-                                    <span style={{
-                                      fontFamily: 'monospace',
-                                      fontSize: '0.85rem',
-                                      fontWeight: '900',
-                                      color: '#ffffff',
-                                      background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
-                                      padding: '5px 12px',
-                                      borderRadius: '8px',
-                                      boxShadow: '0 0 12px rgba(56, 189, 248, 0.4)',
-                                      letterSpacing: '0.04em',
-                                      display: 'inline-block'
-                                    }}>
-                                      {group.batchKey}
-                                    </span>
-                                  </td>
-
-                                  <td>
-                                    <div style={{ fontWeight: '900', color: 'var(--text-main)', fontSize: '0.98rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      📦 Master Batch Folder ({group.items.length} Requirements)
-                                    </div>
-                                    <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                                      <MapPin size={13} color="#0284c7" /> 📍 {firstItem.origin_city} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900', fontSize: '0.95rem', letterSpacing: '0.01em' }}>{firstItem.dest_city}</strong>
-                                    </div>
-                                  </td>
-
-                                  <td>
-                                    <div style={{ fontWeight: '800', color: '#0284c7', fontSize: '0.95rem' }}>
-                                      {(totalBatchQty || 0).toLocaleString()} MT Total
-                                    </div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                      {group.items.length} x {firstItem.required_qty} MT ({firstItem.material_type})
-                                    </div>
-                                  </td>
-
-                                  <td>
-                                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{firstItem.target_date}</div>
-                                  </td>
-
-                                   <td>
-                                     <div style={{ fontSize: '0.84rem', fontWeight: '800', color: '#0284c7' }}>
-                                       📦 Batch Container
-                                     </div>
-                                     <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '600' }}>
-                                       ({group.items.length} Sub-Indents)
-                                     </div>
-                                   </td>
-
-                                   <td>
-                                     {(() => {
-                                       const isAwarded = group.items.every((i) => i.status === 'Awarded');
-                                       const awardedAlloc = (db.allocations || []).find((a) => group.items.some((item) => String(item.id) === String(a.rate_request_id) || String(item.request_no) === String(a.rate_request_id)));
-                                       const awardedTrans = awardedAlloc ? (db.transporters || []).find((t) => t.id === awardedAlloc.transporter_id) : null;
-
-                                       return (
-                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
-                                           {awardedAlloc ? (
-                                             <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '900' }}>
-                                               🏆 Approved: {awardedTrans?.company_name || 'Transporter'}
-                                             </div>
-                                           ) : (
-                                             <div style={{ fontSize: '0.78rem', color: '#0284c7', fontWeight: '800' }}>
-                                               📦 Batch Container
-                                             </div>
-                                           )}
-                                           <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                             <button
-                                               type="button"
-                                               onClick={(e) => {
-                                                 e.stopPropagation();
-                                                 setSelectedRequestForParticularReport(firstItem);
-                                               }}
-                                               className="btn btn-secondary"
-                                               style={{ padding: '3px 8px', fontSize: '0.72rem', border: '1px solid #0284c7', color: '#0284c7', borderRadius: '6px', fontWeight: '800' }}
-                                             >
-                                               📄 Particular Report
-                                             </button>
-                                             <button
-                                               type="button"
-                                               onClick={(e) => {
-                                                 e.stopPropagation();
-                                                 setSelectedAuditReportModal(firstItem);
-                                               }}
-                                               className="btn btn-secondary"
-                                               style={{ padding: '3px 8px', fontSize: '0.72rem', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '6px' }}
-                                             >
-                                               📋 Audit Log
-                                             </button>
-                                           </div>
-                                         </div>
-                                       );
-                                     })()}
-                                   </td>
-
-                                  <td>
-                                    <span className="badge badge-open" style={{ padding: '4px 10px' }}>
-                                      📦 BATCH ({group.items.length} REQS)
-                                    </span>
-                                  </td>
-
-                                  <td style={{ textAlign: 'right' }}>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleBatchExpand(group.batchKey);
-                                      }}
-                                      className="btn btn-primary"
-                                      style={{
-                                        background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
-                                        border: '1.5px solid #7dd3fc',
-                                        padding: '8px 18px',
-                                        fontSize: '0.85rem',
-                                        borderRadius: '12px',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        cursor: 'pointer',
-                                        boxShadow: '0 4px 15px rgba(2, 132, 199, 0.4)',
-                                        transition: 'all 0.25s ease'
-                                      }}
-                                    >
-                                      <span style={{ color: '#ffffff', fontWeight: '900' }}>
-                                        📂 Open Batch ({group.items.length} Items) 🔽
-                                      </span>
-                                    </button>
-                                  </td>
-                                </tr>
-                              )}
-
-                              {/* SUB-ITEMS ACCORDION DRAWER CONTAINER (/01 to /50) */}
-                              {isExpanded && (
-                                <tr key={`expanded_${group.batchKey}`}>
-                                  <td colSpan="7" style={{ padding: '16px 20px 24px 20px', background: '#f8fafc' }}>
-                                    <div style={{
-                                      border: '1.5px solid #cbd5e1',
-                                      borderRadius: '16px',
-                                      padding: '20px 22px',
-                                      background: '#ffffff',
-                                      boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)'
-                                    }}>
-                                      {/* Drawer Header Toolbar */}
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '14px', flexWrap: 'wrap', gap: '14px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                          <div style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', padding: '8px 12px', borderRadius: '12px' }}>
-                                            <FolderOpen size={22} color="#ffffff" />
-                                          </div>
-                                          <div>
-                                            <div style={{ fontSize: '1.05rem', fontWeight: '900', color: '#0f172a', letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                              <span>📂 BATCH FOLDER CONTENTS:</span>
-                                              <span style={{ fontFamily: 'monospace', color: '#0284c7', background: '#e0f2fe', border: '1.5px solid #7dd3fc', padding: '2px 10px', borderRadius: '8px', fontSize: '0.92rem', fontWeight: '900' }}>
-                                                {group.batchKey}
-                                              </span>
-                                            </div>
-                                            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '700', marginTop: '2px' }}>
-                                              Showing all {group.items.length} sub-indents ({group.batchKey}/01 to {group.batchKey}/{group.items.length.toString().padStart(2, '0')})
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                          <span style={{ fontSize: '0.82rem', background: '#e0f2fe', color: '#0284c7', border: '1px solid #7dd3fc', padding: '5px 12px', borderRadius: '20px', fontWeight: '900' }}>
-                                            📍 {firstItem?.origin_city || 'Origin'} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900' }}>{firstItem?.dest_city || 'Destination'}</strong>
-                                          </span>
-                                          <span style={{ fontSize: '0.82rem', background: '#dcfce7', color: '#059669', border: '1px solid #6ee7b7', padding: '5px 12px', borderRadius: '20px', fontWeight: '900' }}>
-                                            ⚖️ {(totalBatchQty || 0).toLocaleString()} MT Batch Total
-                                          </span>
-                                          <button
-                                            type="button"
-                                            onClick={() => setWhatsappModalData({
-                                              isOpen: true,
-                                              data: {
-                                                batchCode: group.batchKey,
-                                                itemsCount: group.items.length,
-                                                origin: firstItem?.origin_city || 'Origin',
-                                                dest: firstItem?.dest_city || 'Destination',
-                                                totalQty: totalBatchQty || 0,
-                                                materialType: firstItem?.material_type || 'Cargo',
-                                                targetDate: firstItem?.target_date || 'Target Date'
-                                              }
-                                            })}
-                                            className="btn"
-                                            style={{
-                                              background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
-                                              color: '#ffffff',
-                                              border: 'none',
-                                              padding: '6px 14px',
-                                              fontSize: '0.8rem',
-                                              borderRadius: '10px',
-                                              fontWeight: '900',
-                                              cursor: 'pointer',
-                                              display: 'inline-flex',
-                                              alignItems: 'center',
-                                              gap: '6px'
-                                            }}
-                                            title="Send WhatsApp Notification Alert for this Batch to Transporters"
-                                          >
-                                            <MessageSquare size={15} /> 📱 WhatsApp Broadcast
-                                          </button>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => setSelectedRequestForParticularReport(firstItem)}
-                                            className="btn"
-                                            style={{
-                                              background: '#059669',
-                                              color: '#ffffff',
-                                              border: 'none',
-                                              padding: '6px 14px',
-                                              fontSize: '0.8rem',
-                                              borderRadius: '10px',
-                                              fontWeight: '900',
-                                              cursor: 'pointer',
-                                              display: 'inline-flex',
-                                              alignItems: 'center',
-                                              gap: '6px'
-                                            }}
-                                            title="Generate Single Combined Comparative Report for entire Batch"
-                                          >
-                                            <FileText size={15} /> 📄 Batch Comparative Report ({group.batchKey})
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => toggleBatchExpand(group.batchKey)}
-                                            className="btn btn-primary"
-                                            style={{
-                                              background: '#0284c7',
-                                              border: 'none',
-                                              padding: '6px 14px',
-                                              fontSize: '0.8rem',
-                                              borderRadius: '10px',
-                                              fontWeight: '900',
-                                              color: '#ffffff',
-                                              cursor: 'pointer'
-                                            }}
-                                          >
-                                            📂 Close Batch 🔼
-                                          </button>
-                                        </div>
-                                      </div>
-
-                                      {/* Sub-Items Clean Table (Matching User Reference Image 🚀) */}
-                                      <div style={{ maxHeight: '80vh', overflowY: 'auto', borderRadius: '12px', border: '1px solid #cbd5e1' }}>
-                                        <table className="custom-table" style={{ width: '100%', margin: 0, background: '#ffffff' }}>
-                                          <thead>
-                                            <tr style={{ background: '#f1f5f9' }}>
-                                              <th style={{ color: '#0f172a', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>REQUISITION CODE</th>
-                                              <th style={{ color: '#0f172a', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>ROUTE / LOCATION</th>
-                                              <th style={{ color: '#0f172a', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>CARGO & QTY</th>
-                                              <th style={{ color: '#0f172a', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>TARGET DATE</th>
-                                              <th style={{ color: '#0f172a', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>SUBMITTED QUOTES</th>
-                                              <th style={{ color: '#0f172a', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>📊 BID & APPROVAL REPORT</th>
-                                              <th style={{ color: '#0f172a', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', borderBottom: '2px solid #cbd5e1' }}>STATUS</th>
-                                              <th style={{ color: '#0f172a', padding: '12px 16px', fontSize: '0.78rem', fontWeight: '900', textAlign: 'right', borderBottom: '2px solid #cbd5e1' }}>ACTIONS</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {(group.items || []).map((req, rIdx) => {
-                                              const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
-                                              const validRates = bids.map((b) => parseFloat(b.rate_per_unit)).filter((r) => !isNaN(r));
-                                              const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
-                                              const displayCode = req.request_no || req.title || 'REQ';
-
-                                              return (
-                                                <tr
-                                                  key={req.id || `sub_row_${rIdx}`}
-                                                  style={{ background: rIdx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}
-                                                >
-                                                  <td style={{ padding: '12px 16px' }}>
-                                                    <div style={{
-                                                      fontSize: '0.95rem',
-                                                      fontWeight: '900',
-                                                      color: '#0f172a',
-                                                      letterSpacing: '0.01em'
-                                                    }}>
-                                                      {displayCode}
-                                                    </div>
-                                                  </td>
-
-                                                  <td style={{ padding: '12px 16px' }}>
-                                                    <div style={{ fontSize: '0.84rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
-                                                      <MapPin size={13} color="#0284c7" /> 📍 {req.origin_city} ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '800', fontSize: '0.9rem' }}>{req.dest_city}</strong>
-                                                    </div>
-                                                  </td>
-
-                                                  <td style={{ padding: '12px 16px' }}>
-                                                    <div style={{ fontWeight: '900', color: '#0284c7', fontSize: '0.92rem' }}>
-                                                      {req.required_qty ? Number(req.required_qty).toLocaleString() : 0} {req.unit || 'MT'}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: '600', textTransform: 'uppercase' }}>{req.material_type || 'Cargo'}</div>
-                                                  </td>
-
-                                                  <td style={{ padding: '12px 16px' }}>
-                                                    <div style={{ fontSize: '0.86rem', color: '#334155', fontWeight: '700' }}>{req.target_date || '-'}</div>
-                                                  </td>
-
-                                                   <td style={{ padding: '12px 16px', minWidth: '230px' }}>
-                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                       {/* 📥 DIRECT TRANSPORTER QUOTES LIST */}
-                                                       {bids.length > 0 ? (
-                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: '#f8fafc', padding: '6px 10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                                                           <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#0f172a', borderBottom: '1px solid #cbd5e1', paddingBottom: '3px' }}>
-                                                             📥 {bids.length} Transporter Quote(s):
-                                                           </div>
-                                                           {bids.map((b, bIdx) => {
-                                                             const trans = (db.transporters || []).find((t) => String(t.id) === String(b.transporter_id) || String(t.code) === String(b.transporter_id) || String(t.username) === String(b.transporter_id));
-                                                             const isL1 = b.rate_per_unit === lowestRate;
-                                                             return (
-                                                               <div key={b.id || bIdx} style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                                                                 <span style={{ fontWeight: '800', color: '#1e293b' }}>
-                                                                   🚚 {trans?.company_name || trans?.code || 'Transporter'}
-                                                                 </span>
-                                                                 <span style={{ fontWeight: '900', color: isL1 ? '#059669' : '#0284c7', background: isL1 ? '#dcfce7' : '#e0f2fe', padding: '1px 6px', borderRadius: '4px', border: isL1 ? '1px solid #16a34a' : '1px solid #7dd3fc' }}>
-                                                                   ₹{Number(b.rate_per_unit).toLocaleString()}/MT {isL1 ? '🏆 L1' : ''}
-                                                                 </span>
-                                                               </div>
-                                                             );
-                                                           })}
-                                                         </div>
-                                                       ) : (
-                                                         <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '600', fontStyle: 'italic' }}>
-                                                           ⏳ No quotes submitted yet
-                                                         </div>
-                                                       )}
-
-                                                       {/* 🔥 ACTIVE COUNTER RATE BADGE */}
-                                                       {req.admin_counter_rate && (
-                                                         <div style={{ fontSize: '0.74rem', background: '#fef3c7', color: '#d97706', border: '1px solid #f59e0b', padding: '3px 8px', borderRadius: '6px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                                           🔥 Active Counter: ₹{(Number(req.admin_counter_rate) || 0).toLocaleString()}/MT
-                                                         </div>
-                                                       )}
-
-                                                       {/* ⚡ INSTANT COUNTER RATE ENTRY FORM */}
-                                                       {req.status !== 'Awarded' && (
-                                                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '2px' }}>
-                                                           <input
-                                                             type="number"
-                                                             min="1"
-                                                             placeholder="Counter ₹"
-                                                             id={`counter_input_${req.id}`}
-                                                             defaultValue={req.admin_counter_rate || ''}
-                                                             style={{ width: '90px', height: '28px', fontSize: '0.78rem', padding: '2px 6px', borderRadius: '6px', border: '1.5px solid #d97706', fontWeight: '800', background: '#ffffff', color: '#0f172a' }}
-                                                           />
-                                                           <button
-                                                             type="button"
-                                                             onClick={() => {
-                                                               const inputEl = document.getElementById(`counter_input_${req.id}`);
-                                                               const val = parseFloat(inputEl?.value);
-                                                               if (!val || isNaN(val) || val <= 0) {
-                                                                 alert('Please enter a valid Counter Rate per MT (e.g. 2100).');
-                                                                 return;
-                                                               }
-                                                               handleSetAdminCounterRate(req, val);
-                                                             }}
-                                                             className="btn"
-                                                             style={{ height: '28px', padding: '2px 8px', fontSize: '0.72rem', background: 'linear-gradient(135deg, #d97706 0%, #b45309 100%)', color: '#ffffff', border: 'none', borderRadius: '6px', fontWeight: '900', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                                                             title="Send Counter Rate / Target Negotiation Rate to Transporters"
-                                                           >
-                                                             🔥 Counter
-                                                           </button>
-                                                         </div>
-                                                       )}
-                                                     </div>
-                                                   </td>
-
-                                                  <td style={{ padding: '12px 16px' }}>
-                                                    {(() => {
-                                                      const alloc = (db.allocations || []).find((a) => a.rate_request_id === req.id);
-                                                      const transporter = alloc ? (db.transporters || []).find((t) => t.id === alloc.transporter_id) : null;
-
-                                                      return (
-                                                        <div>
-                                                          {alloc ? (
-                                                            <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '900' }}>
-                                                              🏆 Approved: {transporter?.company_name || 'Transporter'}
-                                                            </div>
-                                                          ) : bids.length > 0 ? (
-                                                            <div style={{ fontSize: '0.78rem', color: '#38bdf8', fontWeight: '800' }}>
-                                                              📥 {bids.length} Quote(s) Recd
-                                                            </div>
-                                                          ) : (
-                                                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>⏳ No Quotes</div>
-                                                          )}
-                                                          <button
-                                                            type="button"
-                                                            onClick={() => setSelectedAuditReportModal(req)}
-                                                            className="btn btn-secondary"
-                                                            style={{ padding: '2px 8px', fontSize: '0.7rem', marginTop: '4px', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '6px' }}
-                                                          >
-                                                            📋 Audit Log
-                                                          </button>
-                                                        </div>
-                                                      );
-                                                    })()}
-                                                  </td>
-
-                                                  <td style={{ padding: '12px 16px' }}>
-                                                    <span className={`badge ${req.status === 'Awarded' ? 'badge-awarded' : 'badge-open'}`}>
-                                                      {req.status === 'Awarded' ? '✓ Awarded' : 'Open for Bids'}
-                                                    </span>
-                                                  </td>
-
-                                                  <td style={{ textAlign: 'right', padding: '12px 16px' }}>
-                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                                      <button
-                                                        onClick={() => setSelectedRequestForComparison(req)}
-                                                        className="btn btn-primary"
-                                                        style={{ padding: '6px 14px', fontSize: '0.82rem', fontWeight: '900', borderRadius: '8px', boxShadow: '0 0 12px rgba(2, 132, 199, 0.4)' }}
-                                                      >
-                                                        <TrendingDown size={15} /> Compare Quotes ({bids.length})
-                                                      </button>
-                                                    </div>
-                                                  </td>
-                                                </tr>
-                                              );
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </React.Fragment>
-                          );
-                        }
-
-                        // SINGLE REQUIREMENT ROW (non-batch)
-                        const req = group.items[0];
-                        const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
-                        const validRates = bids.map((b) => parseFloat(b.rate_per_unit)).filter((r) => !isNaN(r));
-                        const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
-                        const displayCode = req.request_no || req.title;
-
-                        return (
-                          <tr key={req.id}>
-                            <td>
-                              <span style={{
-                                fontFamily: 'monospace',
-                                fontSize: '0.82rem',
-                                fontWeight: '800',
-                                color: '#0284c7',
-                                background: 'rgba(56, 189, 248, 0.15)',
-                                padding: '4px 10px',
-                                borderRadius: '6px',
-                                border: '1px solid rgba(56, 189, 248, 0.35)',
-                                letterSpacing: '0.04em',
-                                display: 'inline-block'
-                              }}>
-                                {displayCode}
-                              </span>
-                            </td>
-
-                            <td>
-                              <div style={{ fontWeight: '700', color: 'var(--text-main)' }}>{displayCode}</div>
-                              <div style={{ fontSize: '0.82rem', color: 'var(--text-sub)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <MapPin size={13} color="#0284c7" /> 📍 {req.origin_city} ({req.origin_pin || 'MIDC'}) ➔ 🎯 <strong style={{ color: '#d97706', fontWeight: '900', fontSize: '0.95rem', letterSpacing: '0.01em' }}>{req.dest_city} ({req.dest_pin || 'Refinery'})</strong>
+                      return (
+                        <div key={`batch_grp_{group.batchKey}`} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {/* MASTER BATCH CARD */}
+                          <div
+                            className="req-card req-card-batch"
+                            onClick={() => toggleBatchExpand(group.batchKey)}
+                            style={{ cursor: 'pointer', borderLeft: '5px solid #0284c7', background: 'linear-gradient(90deg, #ffffff 0%, #f0f9ff 100%)' }}
+                          >
+                            {/* LEFT SECTION: Identification & Cargo Details */}
+                            <div className="req-card-left">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span className="req-code-badge">{group.batchKey}</span>
+                                <span style={{ fontSize: '0.78rem', background: '#e0f2fe', color: '#0284c7', padding: '2px 8px', borderRadius: '6px', fontWeight: '800' }}>
+                                  📦 Batch ({group.items.length} Items)
+                                </span>
                               </div>
-                            </td>
+                              <div className="req-title-type">
+                                📦 Master Batch Requirement
+                              </div>
+                              <div className="req-cargo-details">
+                                <span>{firstItem?.material_type || 'Cargo'}</span>
+                                <span className="dot-sep">•</span>
+                                <span style={{ fontWeight: '900', color: '#0284c7' }}>{(totalBatchQty || 0).toLocaleString()} MT Total</span>
+                              </div>
+                              <div className="req-route">
+                                📍 {firstItem?.origin_city || 'Origin'} ➔ 🎯 <strong style={{ color: '#d97706' }}>{firstItem?.dest_city || 'Destination'}</strong>
+                              </div>
+                              <div className="req-meta-row">
+                                <span>📅 Target: {firstItem?.target_date || '-'}</span>
+                                <span>📦 {group.items.length} Cargo Items</span>
+                              </div>
+                            </div>
 
-                            <td>
-                              <div style={{ fontWeight: '700', color: '#38bdf8' }}>{(req?.required_qty || 0).toLocaleString()} {req?.unit || "MT"}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{req.material_type}</div>
-                            </td>
+                            {/* CENTER SECTION: Bidding Intelligence */}
+                            <div className="req-card-center">
+                              <div className={`status-pill ${isBatchAwarded ? 'awarded' : 'open'}`}>
+                                {isBatchAwarded ? '🏆 AWARDED' : '🟢 OPEN FOR BIDS'}
+                              </div>
+                              <div className="quote-count-label">
+                                💬 {allBatchBids.length} Quote{allBatchBids.length !== 1 ? 's' : ''} Received
+                              </div>
+                              {batchAlloc ? (
+                                <div className="lowest-bid-highlight" style={{ background: '#e0f2fe', color: '#0369a1', borderColor: '#7dd3fc' }}>
+                                  🏆 Approved: {batchTrans?.company_name || 'Transporter'}
+                                </div>
+                              ) : (
+                                <div className="awaiting-bids-label">
+                                  📦 Click 'Open Bidding' to view {group.items.length} sub-indents
+                                </div>
+                              )}
+                            </div>
 
-                            <td>
-                              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{req.target_date}</div>
-                            </td>
+                            {/* RIGHT SECTION: Primary Action + Overflow Menu */}
+                            <div className="req-card-right" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => toggleBatchExpand(group.batchKey)}
+                                className="primary-cta-btn"
+                              >
+                                🚀 {isExpanded ? 'Close Batch' : 'Open Bidding'}
+                              </button>
 
-                            <td>
-                              <div>
-                                <span style={{ fontWeight: '700', color: '#ffffff' }}>{bids.length} Bids</span>
-                                {lowestRate && (
-                                  <div style={{ fontSize: '0.78rem', color: '#34d399', fontWeight: '700' }}>
-                                    Lowest: ₹{lowestRate}/MT
+                              <div className="overflow-menu-container">
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveOverflowMenuKey(activeOverflowMenuKey === group.batchKey ? null : group.batchKey)}
+                                  className="overflow-menu-trigger"
+                                  aria-label="More options"
+                                >
+                                  •••
+                                </button>
+
+                                {activeOverflowMenuKey === group.batchKey && (
+                                  <div className="overflow-dropdown-menu">
+                                    <button onClick={() => { setSelectedRequestForParticularReport(firstItem); setActiveOverflowMenuKey(null); }}>
+                                      📄 Particular Report
+                                    </button>
+                                    <button onClick={() => { setSelectedAuditReportModal(firstItem); setActiveOverflowMenuKey(null); }}>
+                                      📋 Audit Log
+                                    </button>
+                                    <button onClick={() => { setEditingReq(firstItem); setActiveOverflowMenuKey(null); }}>
+                                      ✏️ Edit
+                                    </button>
+                                    <button onClick={() => { handleDeleteRequirement(firstItem); setActiveOverflowMenuKey(null); }} className="destructive-item">
+                                      🗑️ Delete
+                                    </button>
                                   </div>
                                 )}
                               </div>
-                            </td>
+                            </div>
+                          </div>
 
-                            <td>
-                              {(() => {
-                                const alloc = (db.allocations || []).find((a) => String(a.rate_request_id) === String(req.id) || String(a.rate_request_id) === String(req.request_no));
-                                const transporter = alloc ? (db.transporters || []).find((t) => t.id === alloc.transporter_id) : null;
+                          {/* SUB-ITEMS DRAWER WHEN EXPANDED */}
+                          {isExpanded && (
+                            <div style={{ marginLeft: '20px', paddingLeft: '16px', borderLeft: '3px solid #0284c7', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {group.items.map((req, rIdx) => {
+                                const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
+                                const validRates = bids.map((b) => parseFloat(b.rate_per_unit)).filter((r) => !isNaN(r));
+                                const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
+                                const displayCode = req.request_no || req.title || `REQ-{rIdx + 1}`;
+                                const isAwarded = req.status === 'Awarded';
 
                                 return (
-                                  <div>
-                                    {alloc ? (
-                                      <div style={{ fontSize: '0.8rem', color: '#34d399', fontWeight: '900' }}>
-                                        🏆 Approved: {transporter?.company_name || 'Transporter'}
+                                  <div key={req.id || rIdx} className="req-card" style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1' }}>
+                                    <div className="req-card-left">
+                                      <span className="req-code-badge">{displayCode}</span>
+                                      <div className="req-cargo-details">
+                                        <span>{req.material_type || 'Cargo'}</span>
+                                        <span className="dot-sep">•</span>
+                                        <span style={{ fontWeight: '900', color: '#0284c7' }}>{(Number(req.required_qty) || 0).toLocaleString()} {req.unit || 'MT'}</span>
                                       </div>
-                                    ) : bids.length > 0 ? (
-                                      <div style={{ fontSize: '0.8rem', color: '#38bdf8', fontWeight: '800' }}>
-                                        📥 {bids.length} Quote(s) Recd
+                                      <div className="req-route">
+                                        📍 {req.origin_city} ➔ 🎯 <strong style={{ color: '#d97706' }}>{req.dest_city}</strong>
                                       </div>
-                                    ) : (
-                                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>⏳ Awaiting Quotes</div>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedAuditReportModal(req)}
-                                      className="btn btn-secondary"
-                                      style={{ padding: '3px 8px', fontSize: '0.72rem', marginTop: '4px', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '6px' }}
-                                    >
-                                      📋 Audit Trail
-                                    </button>
+                                      <div className="req-meta-row">
+                                        <span>📅 Target: {req.target_date || '-'}</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="req-card-center">
+                                      <div className={`status-pill ${isAwarded ? 'awarded' : 'open'}`}>
+                                        {isAwarded ? '🏆 AWARDED' : '🟢 OPEN FOR BIDS'}
+                                      </div>
+                                      <div className="quote-count-label">
+                                        💬 {bids.length} Quote{bids.length !== 1 ? 's' : ''} Received
+                                      </div>
+                                      {lowestRate !== null ? (
+                                        <div className="lowest-bid-highlight">
+                                          💰 Lowest Bid: <strong>₹{lowestRate.toLocaleString()}/MT</strong>
+                                        </div>
+                                      ) : (
+                                        <div className="awaiting-bids-label">⏳ Awaiting Quotes</div>
+                                      )}
+                                      {req.admin_counter_rate && (
+                                        <div className="active-counter-badge">
+                                          🔥 Active Counter: ₹{(Number(req.admin_counter_rate) || 0).toLocaleString()}/MT
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="req-card-right">
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedRequestForComparison(req)}
+                                        className="primary-cta-btn"
+                                      >
+                                        🚀 Open Bidding ({bids.length})
+                                      </button>
+
+                                      <div className="overflow-menu-container">
+                                        <button
+                                          type="button"
+                                          onClick={() => setActiveOverflowMenuKey(activeOverflowMenuKey === req.id ? null : req.id)}
+                                          className="overflow-menu-trigger"
+                                          aria-label="More options"
+                                        >
+                                          •••
+                                        </button>
+
+                                        {activeOverflowMenuKey === req.id && (
+                                          <div className="overflow-dropdown-menu">
+                                            <button onClick={() => { setSelectedRequestForParticularReport(req); setActiveOverflowMenuKey(null); }}>
+                                              📄 Particular Report
+                                            </button>
+                                            <button onClick={() => { setSelectedAuditReportModal(req); setActiveOverflowMenuKey(null); }}>
+                                              📋 Audit Log
+                                            </button>
+                                            <button onClick={() => { setEditingReq(req); setActiveOverflowMenuKey(null); }}>
+                                              ✏️ Edit
+                                            </button>
+                                            <button onClick={() => { handleDeleteRequirement(req); setActiveOverflowMenuKey(null); }} className="destructive-item">
+                                              🗑️ Delete
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
                                 );
-                              })()}
-                            </td>
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
 
-                            <td>
-                              <span className={`badge ${req.status === 'Awarded' ? 'badge-awarded' : 'badge-open'}`}>
-                                {req.status === 'Awarded' ? '✓ Awarded' : 'Open for Bids'}
-                              </span>
-                            </td>
+                    // SINGLE REQUIREMENT CARD (non-batch)
+                    const req = group.items[0];
+                    const bids = (db.rate_submissions || []).filter((s) => String(s.rate_request_id) === String(req.id) || String(s.rate_request_id) === String(req.request_no));
+                    const validRates = bids.map((b) => parseFloat(b.rate_per_unit)).filter((r) => !isNaN(r));
+                    const lowestRate = validRates.length > 0 ? Math.min(...validRates) : null;
+                    const displayCode = req.request_no || req.title;
+                    const isAwarded = req.status === 'Awarded';
 
-                            <td style={{ textAlign: 'right' }}>
-                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedRequestForParticularReport(req)}
-                                  className="btn"
-                                  style={{
-                                    padding: '6px 12px',
-                                    fontSize: '0.8rem',
-                                    fontWeight: '800',
-                                    borderRadius: '8px',
-                                    border: '1px solid #059669',
-                                    color: '#059669',
-                                    background: 'rgba(5, 150, 105, 0.1)',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                  }}
-                                  title="Print Particular Bid Audit Report & PDF"
-                                >
-                                  <FileText size={14} /> Particular Report
+                    return (
+                      <div key={req.id} className="req-card">
+                        {/* LEFT SECTION: Identification & Cargo Details */}
+                        <div className="req-card-left">
+                          <span className="req-code-badge">{displayCode}</span>
+                          <div className="req-title-type">
+                            📦 {req.material_type || 'Cargo'}
+                          </div>
+                          <div className="req-cargo-details">
+                            <span>{req.material_type || 'Cargo'}</span>
+                            <span className="dot-sep">•</span>
+                            <span style={{ fontWeight: '900', color: '#0284c7' }}>{(Number(req.required_qty) || 0).toLocaleString()} {req.unit || 'MT'}</span>
+                          </div>
+                          <div className="req-route">
+                            📍 {req.origin_city} ➔ 🎯 <strong style={{ color: '#d97706' }}>{req.dest_city}</strong>
+                          </div>
+                          <div className="req-meta-row">
+                            <span>📅 Target: {req.target_date || '-'}</span>
+                            <span>📦 1 Cargo Item</span>
+                          </div>
+                        </div>
+
+                        {/* CENTER SECTION: Bidding Intelligence */}
+                        <div className="req-card-center">
+                          <div className={`status-pill ${isAwarded ? 'awarded' : 'open'}`}>
+                            {isAwarded ? '🏆 AWARDED' : '🟢 OPEN FOR BIDS'}
+                          </div>
+                          <div className="quote-count-label">
+                            💬 {bids.length} Quote{bids.length !== 1 ? 's' : ''} Received
+                          </div>
+                          {lowestRate !== null ? (
+                            <div className="lowest-bid-highlight">
+                              💰 Lowest Bid: <strong>₹{lowestRate.toLocaleString()}/MT</strong>
+                            </div>
+                          ) : (
+                            <div className="awaiting-bids-label">⏳ Awaiting Quotes</div>
+                          )}
+                          {req.admin_counter_rate && (
+                            <div className="active-counter-badge">
+                              🔥 Active Counter: ₹{(Number(req.admin_counter_rate) || 0).toLocaleString()}/MT
+                            </div>
+                          )}
+                        </div>
+
+                        {/* RIGHT SECTION: Primary Action + Overflow Menu */}
+                        <div className="req-card-right">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRequestForComparison(req)}
+                            className="primary-cta-btn"
+                          >
+                            🚀 Open Bidding ({bids.length})
+                          </button>
+
+                          <div className="overflow-menu-container">
+                            <button
+                              type="button"
+                              onClick={() => setActiveOverflowMenuKey(activeOverflowMenuKey === req.id ? null : req.id)}
+                              className="overflow-menu-trigger"
+                              aria-label="More options"
+                            >
+                              •••
+                            </button>
+
+                            {activeOverflowMenuKey === req.id && (
+                              <div className="overflow-dropdown-menu">
+                                <button onClick={() => { setSelectedRequestForParticularReport(req); setActiveOverflowMenuKey(null); }}>
+                                  📄 Particular Report
                                 </button>
-                                <button
-                                  onClick={() => setSelectedRequestForComparison(req)}
-                                  className="btn btn-primary"
-                                  style={{ padding: '6px 14px', fontSize: '0.8rem' }}
-                                >
-                                  <TrendingDown size={14} /> Compare Rates ({bids.length})
+                                <button onClick={() => { setSelectedAuditReportModal(req); setActiveOverflowMenuKey(null); }}>
+                                  📋 Audit Log
+                                </button>
+                                <button onClick={() => { setEditingReq(req); setActiveOverflowMenuKey(null); }}>
+                                  ✏️ Edit
+                                </button>
+                                <button onClick={() => { handleDeleteRequirement(req); setActiveOverflowMenuKey(null); }} className="destructive-item">
+                                  🗑️ Delete
                                 </button>
                               </div>
-                            </td>
-                          </tr>
-                        );
-                      });
-                    })()}
-
-                    {db.rate_requests.length === 0 && (
-                      <tr>
-                        <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                          No transport requirements created yet. Click 'Create Requirement' above.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
           )}
